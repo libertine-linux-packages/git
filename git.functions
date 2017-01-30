@@ -1,0 +1,226 @@
+# This file is part of libertine linux's package curl. It is subject to the license terms in the COPYRIGHT file found in the top-level directory of this distribution and at https://raw.githubusercontent.com/libertine-linux-packages/curl/master/COPYRIGHT. No part of libertine linux's package curl, including this file, may be copied, modified, propagated, or distributed except according to the terms contained in the COPYRIGHT file.
+# Copyright © 2016 The developers of libertine linux's package curl. See the COPYRIGHT file in the top-level directory of this distribution and at https://raw.githubusercontent.com/libertine-linux-packages/curl/master/COPYRIGHT.
+
+
+variant=upstream
+
+depends build_ccache
+build_needs ccache
+
+depends build_gnumake
+build_needs make
+
+depends build_perl
+build_needs perl
+
+depends build_autoconf
+build_needs autoconf autoheader autom4te autoreconf autoscan autoupdate ifnames
+
+depends build_automake
+build_needs automake aclocal
+
+depends build_gnum4
+build_needs m4
+
+depends build_busybox
+build_needs expr install sort ls sleep
+
+# Used by Makefile configure target
+build_needs env sh rm sed
+
+# Used by config.mak.uname
+build_needs uname
+
+# Makefile
+build_needs echo true touch tar diff cmp
+
+# WTF?
+build_needs date
+
+depends build_musl_cross_make_build
+build_needs "$libertine_build"-cc "$libertine_build"-ar "$libertine_build"-ranlib
+
+build_needs rm ln find xargs sed
+_libertine_compile_git()
+{
+	local isForBuild="$1"
+	
+	libertine_public_addOrReplaceBinaryInPathWithSwallow msgfmt
+	
+	pushd "$(libertine_public_sourcePath)"
+	
+		local buildNeedsPath="$(libertine_public_buildNeedsPath)"
+	
+		sed -i \
+			-e 's;/bin/sh;'"$buildNeedsPath"'/sh;g' \
+			-e 's;/usr/bin/perl;'"$buildNeedsPath"'/perl;g' \
+			-e 's;/usr/bin/python;'"$buildNeedsPath"'/python-2.7;g' \
+			Makefile
+		
+		libertine_path_fakeUname_forHost "$buildNeedsPath"/sh "$buildNeedsPath"/fake-uname-host
+		rm "$buildNeedsPath"/uname
+		ln -s fake-uname-host "$buildNeedsPath"/uname
+		
+		libertine_public_make configure
+		
+		if $isForBuild; then
+			
+			local sysrootFolderPath="$(libertine_public_outputBuildSysrootPath)"
+			
+			libertine_public_populateInputSysroot build_zlib
+			
+			libertine_public_autoconf_modernAutoconfConfigure \
+				--without-openssl \
+				--without-libpcre \
+				--without-curl \
+				--without-expat \
+				--with-gitconfig="$sysrootFolderPath"/etc/gitconfig \
+				--with-gitattributes="$sysrootFolderPath"/etc/gitattributes \
+				--with-pager='less' \
+				--with-editor='vi' \
+				--with-shell="$buildNeedsPath"/sh \
+				--with-perl="$buildNeedsPath"/perl \
+				--with-python="$buildNeedsPath"/python-2.7 \
+				--with-zlib \
+				--without-tcltk
+						
+			libertine_public_make prefix="$sysrootFolderPath"/usr all \
+				NO_CROSS_DIRECTORY_HARDLINKS=YesPlease \
+				NO_INSTALL_HARDLINKS=YesPlease \
+				NO_MSGFMT_EXTENDED_OPTIONS=YesPlease
+			
+			libertine_public_make install \
+				NO_CROSS_DIRECTORY_HARDLINKS=YesPlease \
+				NO_INSTALL_HARDLINKS=YesPlease \
+				NO_MSGFMT_EXTENDED_OPTIONS=YesPlease
+	
+		else
+			local sysrootFolderPath="$(libertine_public_outputHostSysrootPath)"
+			
+			libertine_public_populateInputSysroot zlib curl expat
+			
+			libertine_public_autoconf_modernAutoconfConfigure \
+				--without-openssl \
+				--without-libpcre \
+				--with-curl="$(libertine_public_inputSysrootPath)" \
+				--with-expat="$(libertine_public_inputSysrootPath)" \
+				--with-pager='less' \
+				--with-editor='vi' \
+				--with-shell="$buildNeedsPath"/sh \
+				--with-perl="$buildNeedsPath"/perl \
+				--with-python="$buildNeedsPath"/python-2.7 \
+				--with-zlib="$(libertine_public_inputSysrootPath)" \
+				--without-tcltk
+						
+			libertine_public_make prefix='/usr' all \
+				NO_CROSS_DIRECTORY_HARDLINKS=YesPlease \
+				NO_INSTALL_HARDLINKS=YesPlease \
+				NO_MSGFMT_EXTENDED_OPTIONS=YesPlease
+			
+			libertine_public_make install prefix='/usr' DESTDIR="$sysrootFolderPath" \
+				NO_CROSS_DIRECTORY_HARDLINKS=YesPlease \
+				NO_INSTALL_HARDLINKS=YesPlease \
+				NO_MSGFMT_EXTENDED_OPTIONS=YesPlease
+			
+			set +f
+			local executable
+			for executable in "$sysrootFolderPath"/usr/libexec/git-core/*
+			do
+				set -f
+				if [ -L "$executable" ]; then
+					continue
+				fi
+				
+				if [ ! -f "$executable" ]; then
+					continue
+				fi
+				
+				if [ ! -x "$executable" ]; then
+					continue
+				fi
+				
+				local mimeType="$(file --mime-type --brief "$executable")"
+				if [ "$mimeType" = 'application/x-executable' ]; then
+					libertine_public_stripAndSecureBinary "$executable"
+				else
+					sed -i \
+						-e 's;'"$buildNeedsPath"';/usr/bin;g' \
+						"$executable"
+				fi
+				
+			done
+			set -f
+			
+		fi
+		
+	popd
+	
+	
+	local binFolderPath="$sysrootFolderPath"/usr/bin
+	local binary
+	for binary in git git-cvsserver git-shell git-upload-pack git-receive-pack git-upload-archive
+	do
+		rm -rf "$binFolderPath"/"$binary"
+		ln -s ../libexec/git-core/"$binary" "$binFolderPath"/"$binary"
+	done
+	
+	
+	if $isForBuild; then
+		:
+	else
+		libertine_public_copy_filesystem "$sysrootFolderPath"/ "$(libertine_public_outputInitramfsPath)"/
+	fi
+}
+
+case "$package" in
+	
+	build_git)
+		depends build_zlib
+		
+		build_provides git git-cvsserver git-shell git-upload-pack git-receive-pack git-upload-archive
+		
+		libertine_compile_build_git()
+		{
+			_libertine_compile_git true
+		}
+	;;
+	
+	git)
+		depends zlib
+		
+		depends perl
+		
+		depends curl
+		
+		depends expat
+		
+		depends build_musl_cross_make_host
+		build_needs "$libertine_host"-cc "$libertine_host"-ar "$libertine_host"-ranlib
+		build_needs "$libertine_host"-strip
+		
+		depends build_paxctl
+		build_needs paxctl
+		
+		depends build_file
+		build_needs file
+		
+		libertine_compile_git()
+		{
+			_libertine_compile_git false
+		}
+	;;
+	
+esac
+
+
+depends build_busybox
+
+# build.py
+build_needs rm
+
+build_needs sed ln
+libertine_compile_influxdb()
+{
+	
+	libertine_public_installAndStripBinaryIn bin influxdb
+}
