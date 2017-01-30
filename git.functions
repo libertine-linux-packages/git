@@ -211,16 +211,3 @@ case "$package" in
 	;;
 	
 esac
-
-
-depends build_busybox
-
-# build.py
-build_needs rm
-
-build_needs sed ln
-libertine_compile_influxdb()
-{
-	
-	libertine_public_installAndStripBinaryIn bin influxdb
-}
