@@ -91,11 +91,11 @@ _libertine_compile_git()
 			
 			local sysrootFolderPath="$(libertine_public_outputBuildSysrootPath)"
 			
-			libertine_public_populateInputSysroot build_libressl build_curl build_expat build_zlib
+			libertine_public_populateInputSysroot build_libressl build_libpcre build_curl build_expat build_zlib
 			
 			libertine_public_autoconf_modernAutoconfConfigure \
 				--with-openssl="$(libertine_public_inputSysrootPath)" \
-				--without-libpcre \
+				--with-libpcre="$(libertine_public_inputSysrootPath)" \
 				--with-curl="$(libertine_public_inputSysrootPath)" \
 				--with-expat="$(libertine_public_inputSysrootPath)" \
 				--with-gitconfig="$sysrootFolderPath"/etc/gitconfig \
@@ -115,11 +115,12 @@ _libertine_compile_git()
 		else
 			local sysrootFolderPath="$(libertine_public_outputHostSysrootPath)"
 			
-			libertine_public_populateInputSysroot libressl curl expat zlib
+			# libidn is a curl dependency
+			libertine_public_populateInputSysroot libressl libpcre curl expat zlib libidn
 			
 			libertine_public_autoconf_modernAutoconfConfigure \
 				--with-openssl="$(libertine_public_inputSysrootPath)" \
-				--without-libpcre \
+				--with-libpcre="$(libertine_public_inputSysrootPath)" \
 				--with-curl="$(libertine_public_inputSysrootPath)" \
 				--with-expat="$(libertine_public_inputSysrootPath)" \
 				--with-pager='less' \
@@ -129,6 +130,8 @@ _libertine_compile_git()
 				--with-python="$buildNeedsPath"/python-2.7 \
 				--with-zlib="$(libertine_public_inputSysrootPath)" \
 				--without-tcltk
+			
+			sed -i -e 's/-lcurl/-lcurl -lidn/g' Makefile
 			
 			_libertine_compile_git_fixAutoconfMakefile
 			_libertine_compile_git_make /usr all
@@ -190,6 +193,8 @@ case "$package" in
 	build_git)
 		depends build_libressl
 		
+		depends build_libpcre
+		
 		depends build_curl
 		
 		depends build_expat
@@ -209,6 +214,8 @@ case "$package" in
 	git)
 		depends libressl
 		
+		depends libpcre
+		
 		depends curl
 		
 		depends expat
@@ -216,6 +223,8 @@ case "$package" in
 		depends zlib
 		
 		depends perl
+		
+		depends libidn
 		
 		depends build_musl_cross_make_host
 		build_needs "$libertine_host"-cc "$libertine_host"-ar "$libertine_host"-ranlib
