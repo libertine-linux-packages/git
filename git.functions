@@ -45,7 +45,31 @@ _libertine_compile_git()
 {
 	local isForBuild="$1"
 	
-	libertine_public_addOrReplaceBinaryInPathWithSwallow msgfmt
+	#libertine_public_addOrReplaceBinaryInPathWithSwallow msgfmt
+	
+	_libertine_compile_git_fixAutoconfMakefile()
+	{	
+		sed -i \
+			-e 's;^NO_CURL=.*;NO_CURL=;g' \
+			-e 's;^NO_GETTEXT=.*;NO_GETTEXT=YesPlease;g' \
+			-e 's;^CFLAGS =.*;CFLAGS = ;g' \
+			config.mak.autogen
+	}
+	
+	_libertine_compile_git_make()
+	{
+		local prefix="$1"
+		local target="$2"
+		shift 2
+		
+		libertine_public_make prefix="$prefix" "$target" \
+			NEEDS_SSL_WITH_CURL=YesPlease \
+			NEEDS_CRYPTO_WITH_SSL=YesPlease \
+			NO_MSGFMT_EXTENDED_OPTIONS=YesPlease \
+			NO_CROSS_DIRECTORY_HARDLINKS=YesPlease \
+			NO_INSTALL_HARDLINKS=YesPlease \
+			NO_MSGFMT_EXTENDED_OPTIONS=YesPlease "$@"
+	}
 	
 	pushd "$(libertine_public_sourcePath)"
 	
@@ -67,13 +91,13 @@ _libertine_compile_git()
 			
 			local sysrootFolderPath="$(libertine_public_outputBuildSysrootPath)"
 			
-			libertine_public_populateInputSysroot build_zlib
+			libertine_public_populateInputSysroot build_libressl build_curl build_expat build_zlib
 			
 			libertine_public_autoconf_modernAutoconfConfigure \
-				--without-openssl \
+				--with-openssl="$(libertine_public_inputSysrootPath)" \
 				--without-libpcre \
-				--without-curl \
-				--without-expat \
+				--with-curl="$(libertine_public_inputSysrootPath)" \
+				--with-expat="$(libertine_public_inputSysrootPath)" \
 				--with-gitconfig="$sysrootFolderPath"/etc/gitconfig \
 				--with-gitattributes="$sysrootFolderPath"/etc/gitattributes \
 				--with-pager='less' \
@@ -81,26 +105,20 @@ _libertine_compile_git()
 				--with-shell="$buildNeedsPath"/sh \
 				--with-perl="$buildNeedsPath"/perl \
 				--with-python="$buildNeedsPath"/python-2.7 \
-				--with-zlib \
+				--with-zlib="$(libertine_public_inputSysrootPath)" \
 				--without-tcltk
-						
-			libertine_public_make prefix="$sysrootFolderPath"/usr all \
-				NO_CROSS_DIRECTORY_HARDLINKS=YesPlease \
-				NO_INSTALL_HARDLINKS=YesPlease \
-				NO_MSGFMT_EXTENDED_OPTIONS=YesPlease
 			
-			libertine_public_make install \
-				NO_CROSS_DIRECTORY_HARDLINKS=YesPlease \
-				NO_INSTALL_HARDLINKS=YesPlease \
-				NO_MSGFMT_EXTENDED_OPTIONS=YesPlease
+			_libertine_compile_git_fixAutoconfMakefile
+			_libertine_compile_git_make "$sysrootFolderPath"/usr all
+			_libertine_compile_git_make "$sysrootFolderPath"/usr install
 	
 		else
 			local sysrootFolderPath="$(libertine_public_outputHostSysrootPath)"
 			
-			libertine_public_populateInputSysroot zlib curl expat
+			libertine_public_populateInputSysroot libressl curl expat zlib
 			
 			libertine_public_autoconf_modernAutoconfConfigure \
-				--without-openssl \
+				--with-openssl="$(libertine_public_inputSysrootPath)" \
 				--without-libpcre \
 				--with-curl="$(libertine_public_inputSysrootPath)" \
 				--with-expat="$(libertine_public_inputSysrootPath)" \
@@ -111,16 +129,10 @@ _libertine_compile_git()
 				--with-python="$buildNeedsPath"/python-2.7 \
 				--with-zlib="$(libertine_public_inputSysrootPath)" \
 				--without-tcltk
-						
-			libertine_public_make prefix='/usr' all \
-				NO_CROSS_DIRECTORY_HARDLINKS=YesPlease \
-				NO_INSTALL_HARDLINKS=YesPlease \
-				NO_MSGFMT_EXTENDED_OPTIONS=YesPlease
 			
-			libertine_public_make install prefix='/usr' DESTDIR="$sysrootFolderPath" \
-				NO_CROSS_DIRECTORY_HARDLINKS=YesPlease \
-				NO_INSTALL_HARDLINKS=YesPlease \
-				NO_MSGFMT_EXTENDED_OPTIONS=YesPlease
+			_libertine_compile_git_fixAutoconfMakefile
+			_libertine_compile_git_make /usr all
+			_libertine_compile_git_make /usr install DESTDIR="$sysrootFolderPath"
 			
 			set +f
 			local executable
@@ -143,6 +155,7 @@ _libertine_compile_git()
 				if [ "$mimeType" = 'application/x-executable' ]; then
 					libertine_public_stripAndSecureBinary "$executable"
 				else
+					# git's autoconf confuses build-time and post-install paths for sh, perl and python
 					sed -i \
 						-e 's;'"$buildNeedsPath"';/usr/bin;g' \
 						"$executable"
@@ -175,7 +188,15 @@ _libertine_compile_git()
 case "$package" in
 	
 	build_git)
+		depends build_libressl
+		
+		depends build_curl
+		
+		depends build_expat
+		
 		depends build_zlib
+		
+		depends build_perl
 		
 		build_provides git git-cvsserver git-shell git-upload-pack git-receive-pack git-upload-archive
 		
@@ -186,13 +207,15 @@ case "$package" in
 	;;
 	
 	git)
-		depends zlib
-		
-		depends perl
+		depends libressl
 		
 		depends curl
 		
 		depends expat
+		
+		depends zlib
+		
+		depends perl
 		
 		depends build_musl_cross_make_host
 		build_needs "$libertine_host"-cc "$libertine_host"-ar "$libertine_host"-ranlib
