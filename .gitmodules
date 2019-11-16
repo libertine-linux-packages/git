@@ -2,4 +2,3 @@
 	path = upstream
 	url = https://github.com/libertine-linux-clones/git.git
 	branch = master
-	libertine-linux-upstream = https://github.com/git/git.git
